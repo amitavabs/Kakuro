@@ -1,4 +1,4 @@
-#Kakuro_config Ver 1.1 amitavabs@yahoo.com
+#Kakuro_config Ver 1.2 amitavabs@yahoo.com
 #Intial configuration program for Kakuro solving
 #Edit this program (see comments below) if Kakuro input data mode needs to be changed
 
@@ -62,9 +62,6 @@ t_eqn = []
 global t_values
 t_values = []
 
-#Stack of possible values being iteratively verified from t_equations
-global t_stack
-t_stack = []
 
 # Set of all possible values grid may contain
 global s_all
@@ -86,6 +83,13 @@ def set_t_range() :
         t_range.append(t_range_rec)
     return
 
+#iteration lists
+global t_stack
+t_stack = []
+global t_stack_equations
+t_stack_equations = []
+global t_var_equation_map
+t_var_equation_map = []
 
 #Kakuro populate modes
 #0- User Input 1- Stored flat file  2 - Checkpoint start
