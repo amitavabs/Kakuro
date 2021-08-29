@@ -1,4 +1,4 @@
-#kakuro_main Ver 1.1 amitavabs@yahoo.com
+#kakuro_main Ver 1.2 amitavabs@yahoo.com
 #kakuro_main is the front GUI for Kakuro input data
 #1st screen accepts  rows and columns count of Kakuro and 2nd screen actual data
 
@@ -283,6 +283,3 @@ for i in range(K_ROW * K_COL) :
         
     
 root.mainloop()
-
-
-
