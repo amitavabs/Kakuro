@@ -1,8 +1,26 @@
-#kakuro_solver Ver 1.1 amitavabs@yahoo.com
+#kakuro_solver Ver 1.2 amitavabs@yahoo.com
 #kakuro_solver_engine works by iteratively checking for valid values 
 import tkinter as tk
 from kakuro_config import  *
 
+'''
+lists used by postprocessor
+t[rows][cols]= [variable] phyical kakuro grid representation with variable, static table
+t_range index [[maxsum, minsum] , ...] index is number of variables, static table
+t_values  [[variable, [varlist values],entry_id] , ...], 0 index stores number of variables solved
+Holds checkpoint value of results of postprocessor
+t_equations  [[entry_id, sum, [varlist]] , ...]  Equations to solve in kakuro, static table
+t_eqn  [[entry_id, sum, [varlist]] , ...]  solved values substituted in  t_equations
+Intial soved/allowable value list
+
+lists used by iterative process
+t_stack [[[varlist values],len(varlist values), current value iterated] , ...], 0 index special entry, holds stack pointer
+Variables mapping changed so that index is variable number. Sorted copy of t_values solved result
+t_stack_equations  [[[varlist], sum] , ...] index is equation number, static table
+Different  copy of t_equation using  variables remapped on t_stack
+t_equation_solve_order [[varlist- processing order from t_stack in t_stack_equations ], ...] index is equation number,static table
+t_var_equation map[ [equation number used], ...] index is variable number, static table
+'''
 
 #Intial solution done by  elimination followed by iterative process
 #K_ROW and K_COL computed in kakuro_main module and need to passed as pgm args
@@ -38,38 +56,6 @@ def kaku_solver_engine(K_ROW, K_COL, frame, frame_arr, entries):
         for j in range(K_COL):
             if mvarcount < t[i][j] : mvarcount = t[i][j]
     VARIABLE_COUNT = mvarcount      
-    
-    kaku_solver_intialise_t_eqn_t_values()
-    
-    i = kaku_solver_solve_equations() 
-    if ( i == 1) or ( i == 2) : return i
-
-    t_stack = []
-    for i in t_values : t_stack.append ([ i[0], list(i[1]), list(i[1])[0] ])
-    #Edit ndx 0 to  get top of sort order. t_stack[0][0] holds pointer to stack
-    t_stack[0] = [ 0 ,[0] ,0 ]
-    #Entry cell Id in sort key used to keep variables in a equation nearby
-    t_stack.sort(key = lambda i: (len(i[1]), i[2]))
-    for mndx, mlist in enumerate(t_stack) :
-        if len(mlist[1]) != 1 : break
-    t_stack[0][0] = mndx -1
-  
-    i = kaku_solver_iterate()
-    
-    s_txt_solution(K_ROW, K_COL)
-    if i == 1 : s_graphic_solution(K_ROW, K_COL, frame, frame_arr)
-
-   
-    return i
-
-
-#Intialise with copy of equations and list to hold allowable variable values
-def kaku_solver_intialise_t_eqn_t_values() :
-    global t_equations
-    global t_eqn
-    global t_values
-    global VARIABLE_COUNT
-    global s_all
 
     t_eqn = []
     #t_eqn = t_equations.copy() will be a shallow copy without the list
@@ -81,8 +67,17 @@ def kaku_solver_intialise_t_eqn_t_values() :
     t_values = []
     #Dummy populate 0 index to allow  index n  point to nth variable 
     for i in range(VARIABLE_COUNT + 1) :  t_values.append([i, s_all, 0])
+    
+    i = kaku_solver_solve_equations() 
+    if ( i == 1) or ( i == 2) : return i
 
-    return
+    i = kaku_solver_iterate()
+    
+    s_txt_solution(K_ROW, K_COL)
+    if i == 1 : s_graphic_solution(K_ROW, K_COL, frame, frame_arr)
+    
+    return i
+
 
 
 #Verify and extract equations from rows
@@ -363,156 +358,166 @@ def  kaku_solver_update_eqn(VARIABLE_COUNT, t_eqn, t_values) :
     return False
 
 
-#Last processed valid values in t_values used for iterative processing
-# Variable value, combination in stack is added to equation to solve for validity 
+#Valid values in t_stack used for iterative processing
+# Solved equation(t_stack_eqn ) maintains variablewise equation solved iteratively
 def kaku_solver_iterate():
     #0 - Incompelete processing 
     #1 - Solution complete
     #2 - Invalid Kakuro data
-
-    global t_eqn
-    global t_stack
-    global VARIABLE_COUNT
     
-    #Previously computed values ( t_eqn and t_values) initally used
+    global t_values
+    global t_equations
+    global t_stack
+    global t_stack_equations
+    global t_var_equation_map
+    global VARIABLE_COUNT
+
+    #Edit ndx 0 to  get top of sort order. 
+    t_values[0] = [ 0 ,{0} ,0 ]
+    #Entry cell Id in sort key used to keep variables in a equation nearby
+    t_values.sort(key = lambda i: (len(i[1]), i[2]))
+
+    t_stack = []
+    mlist = []
+    for mndx, i in enumerate(t_values) :
+        mlist = list(i[1])
+        mlist.sort()
+        t_stack.append ([ mlist,len(mlist), 0])
+        t_values[mndx][1] = mlist
+    
+    for mndx, mlist in enumerate(t_stack) :
+        if len(mlist[0]) != 1 : break
+        else : t_stack[mndx][2] = t_stack[mndx][0][0]
+    #Preprocessor stage completes solution
+    if mndx == VARIABLE_COUNT : return 1
+    t_stack[0][0] = mndx -1
+    
+    t_stack_equations = []
+    for i in t_equations :
+        mlist = []
+        for j in i[2] :
+            for mndx, k in enumerate(t_values) :
+                if j == k[0] : break
+            mlist.append(mndx)
+        #arrange as per t_stack
+        mlist.sort()
+        t_stack_equations.append([ mlist, i[1],len(mlist) ])
+                                   
+    t_var_equation_map = []
+    for mndx1, i in enumerate(t_stack) :
+        if mndx1 == 0 :
+            t_var_equation_map.append([0]) #dummy value
+            continue
+        mlist = []
+        for mndx2, j in enumerate(t_stack_equations) :
+           if mndx1 in j[0] :
+                mlist.append(mndx2)
+        t_var_equation_map.append(mlist)
+    
     i = 0
-    mstackempty = False
-    #mdbg = 0
-    while ((i== 0) or (i == 2)) and not mstackempty :
-        if i == 0 :
+    while ( i != 1 ) :
+        
+        if (i == 0) :
             if t_stack[0][0] == VARIABLE_COUNT :
-                mstackempty = True
-                i = 2
-                continue
-            i = kaku_solver_iterate_incomplete()
+                i = kaku_solver_solved()
+                if i == 1 : return 1
+                else : continue
+            t_stack[0][0] += 1
+            mpointer = t_stack[0][0]
+            t_stack[mpointer][2] = t_stack[mpointer][0][0]
+            i = kaku_solver_validate_stack_variables()
             continue
         
-        if ( i == 2) :
-            #Abandon last used value for variable and take new next one
-            while not mstackempty :
+        if (i == 2) :
+            mfound = False
+            while not mfound :
                 mpointer = t_stack[0][0]
-                mlist = t_stack[mpointer][1]
-                mindex = mlist.index(t_stack[mpointer][2])
-                #if last element of list has been checked - pop stack
-                if mindex == len(t_stack[mpointer][1])-1 :
+                mval = t_stack[mpointer][2]
+                mndx = t_stack[mpointer][0].index(mval)
+                #Check if all possible values of variable used up
+                if mndx == t_stack[mpointer][1] - 1 :
                     if mpointer == 1 :
-                        mstackempty = True
-                    else :
-                        t_stack[0][0] = t_stack[0][0] - 1
+                        print("Warning : Top of variable list reached")
+                        return 2
+                    t_stack[0][0] = mpointer -1
                     continue
                 else :
-                    mval = mlist[mindex +1]
-                    t_stack[mpointer][2] = mval
-                    break
+                    mfound = True
+                    t_stack[mpointer][2] = t_stack[mpointer][0][mndx + 1]
+            #Restore Checkpoint      
+            for j in range(mpointer + 1, VARIABLE_COUNT + 1) :
+                t_stack[j][0] = t_values[j][1]
+                t_stack[j][1] = len(t_stack[j][0])
+                
+            i = kaku_solver_validate_stack_variables()
+            continue
 
-            if  mstackempty : break
-            i = kaku_solver_iterate_invalid()
-            
-    if  mstackempty : i = 2       
- 
     return i   
 
 
-#Verifies variables of t_stack are unique in a kakuro equation 
+#Verifies a variable value of t_stack is valid in always two kakuro equations
+#Assign more restrictive range of allowable values
 def kaku_solver_validate_stack_variables() :
-    global t_equation
+    global t_range
     global t_stack
+    global t_stack_equations
+    global t_var_equation_map
     global VARIABLE_COUNT
+    
+    mpointer = t_stack[0][0]
+    if mpointer == 6 :
+        pass
+ 
+    for meqn in t_var_equation_map[mpointer]  : 
+        #Checks variables values are unique
+        #and computes ranges for unassigned variables
+        msum = 0
+        mlist = []
+        mrangecompute = False
+        for mndx, i in enumerate(t_stack_equations[meqn][0]) :
+            if i <= mpointer :
+                j = t_stack[i][2]
+                if j in mlist : return 2
+                else : mlist.append(j)
+                msum = msum + j
+                continue
 
-    #Indexable search array from t_stack
-    t_temp = [0 for i in range(VARIABLE_COUNT + 1)]
-    mpointer = t_stack[0][0] + 1
-    for i in range(1, mpointer) :
-        mindex = t_stack[i][0]
-        mvalue = t_stack[i][2]
-        t_temp[mindex] = mvalue
-        
-    #Check  values of variables in a equation are unique
-    for i in t_equations :
-        mvarlist = i[2]
-        if len(mvarlist) > 1 :
-            mvarvalues = []
-            for j in mvarlist :
-                if (t_temp[j]) != 0 : mvarvalues.append(t_temp[j])
-            if len(set(mvarvalues)) <  len(mvarvalues) :
-                return 2
+            if not mrangecompute :
+                mrangecompute = True
+                msum = t_stack_equations[meqn][1] - msum
+                if msum < 0 : return 2
+                mvar_no = t_stack_equations[meqn][2] - mndx
+                # single unassigned variable that is not unique
+                if mvar_no == 1 :
+                    if msum in mlist : return 2
+                    if  msum < 1 or msum > 9 : return 2
+                elif mvar_no == 2 :
+                    if  msum < 2 or msum > 17 : return 2
+                maxval = msum - t_range[mvar_no - 1][1]
+                if maxval > 9 : maxval = 9
+                minval = msum - t_range[mvar_no - 1][0]
+                if minval < 1 : minval = 1
+                mstacklist = list(range(minval, maxval + 1,))
+                mstacklistlen = len(mstacklist)
+                
+            if mstacklistlen < t_stack[i][1] :
+                 t_stack[i] = [mstacklist, mstacklistlen, 0 ]
 
     return 0
 
 
-#Add a value for new variable and check for solution
-def kaku_solver_iterate_incomplete() :
-    global t_eqn
-    global t_values
+def kaku_solver_solved() :
     global t_stack
- 
-    #Use allowable variable value from previous iteration ,
-    #as we continue with the same assumed previous stack values
-    t_stack[0][0] = t_stack[0][0] + 1
-    mpointer = t_stack[0][0]
-    mvariable = t_stack[mpointer][0]
-    mvaluelist = list(t_values[mvariable][1])
-    mvalue = mvaluelist[0]
-    t_stack[mpointer][2] = mvalue
-    
-    t_eqn.append([ 0, mvalue, [mvariable] ])
-    
-    i =  kaku_solver_validate_stack_variables() 
-    if (i == 2 ) : return i
-
-    i = kaku_solver_solve_equations() 
- 
-    return i 
-
-
-#Change a value for a variable  check for solution
-def kaku_solver_iterate_invalid() :
-    global t_equations
-    global t_eqn
-    global t_stack
-    global VARIABLE_COUNT
-    
-    kaku_solver_intialise_t_eqn_t_values()
-    
-    #Equation of solved/to verify values combined in equations
-    mpointer = t_stack[0][0]
-    for ndx, mlist in enumerate(t_stack) :
-        if ndx > mpointer : break
-        if ndx != 0 :
-            t_eqn.append([ 0, mlist[2], [mlist[0]] ])
-            
-    i =  kaku_solver_validate_stack_variables() 
-    if (i == 2 ) : return i
-    
-    i = kaku_solver_solve_equations() 
-  
-    return i
-
-
-#Display solution in graphic mode in Kakuro  screen
-def s_graphic_solution(K_ROW, K_COL, frame, frame_arr) :
-    global t
-    global t_values   
-   
-    mcount = 1
-    for i in range(K_ROW) :
-        for j in range(K_COL) :
-            if t[i][j] != 0 :
-                if len(t_values[mcount][1]) == 1 :
-                    mval = list(t_values[mcount][1])[0]
-                else : mval = "?"
-                mval = " " + str(mval) + " "
-                k = i * K_ROW + j - mcount -1
-                frame_arr[k].destroy
-                frame_element =  tk.Frame(frame)       
-                frame_element.grid( row=i ,column=j ,padx=1, pady=1)
-                l1= tk.Label(frame_element, text=mval, highlightthickness=0,bd = 0,)
-                l1.config(font=('lucida', 24))
-                l1.grid( column = j, row = i)
-                mcount += 1
- 
-    return
-
+    global t_stack_equations
+    for i in t_stack_equations :
+        msum = 0
+        for j in i[0] :
+            msum = msum + t_stack[j][2]
+        if msum != i[1] :
+            return 2
+    print("Kakuro solved")
+    return 1
+                
 
 #Display solution in text mode in terminal window
 def s_txt_solution(K_ROW, K_COL) :
@@ -524,11 +529,39 @@ def s_txt_solution(K_ROW, K_COL) :
         for j in range(K_COL) :
             if t[i][j] == 0 : print("X", end="|")
             else :
-                if len(t_values[mcount][1]) == 1 :
-                    mval = list(t_values[mcount][1])[0]
-                else : mval = "?"
+                for mndx, p in enumerate(t_values) :
+                    if p[0] == mcount : break
+                mval = t_stack[mndx][2]
+                if mcount >  t_stack[0][0] : mval  = "?"         
                 print(mval, end="|")
                 mcount += 1
             if j == K_COL - 1 : print(" ")
     print("===========================")
     return            
+            
+
+#Display solution in graphic mode in Kakuro  screen
+def s_graphic_solution(K_ROW, K_COL, frame, frame_arr) :
+    global t
+    global t_values   
+   
+    mcount = 1
+    for i in range(K_ROW) :
+        for j in range(K_COL) :
+            if t[i][j] != 0 :
+                for mndx, p in enumerate(t_values) :
+                    if p[0] == mcount : break
+                mval = t_stack[mndx][2]
+                    
+                if  mval == 0 : mvalstr = " ? "
+                mvalstr = " " + str(mval) + " "
+                k = i * K_ROW + j - mcount -1
+                frame_arr[k].destroy
+                frame_element =  tk.Frame(frame)       
+                frame_element.grid( row=i ,column=j ,padx=1, pady=1)
+                l1= tk.Label(frame_element, text=mvalstr, highlightthickness=0,bd = 0,)
+                l1.config(font=('lucida', 24))
+                l1.grid( column = j, row = i)
+                mcount += 1
+ 
+    return
